@@ -1,6 +1,7 @@
 # SnapKV
 We introduce an innovative and out-of-box KV cache compression method, SnapKV.
-
+## Requirements
+`transformers>=4.36`
 ## Quick Start
 ### Use SnapKV-optimized Models
 SnapKV-optimized models are all under models file, which could be directly imported and used the same like baseline models.
