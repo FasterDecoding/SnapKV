@@ -52,7 +52,7 @@ from transformers.utils import (
 )
 from transformers.utils.import_utils import is_torch_fx_available
 from transformers.models.mixtral.configuration_mixtral import MixtralConfig
-from snapkv_utils import KVCluster
+from utils_yl_ratio_avgpool_v2 import KVCluster # [SnapKV]
 
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func
@@ -276,7 +276,7 @@ class MixtralAttention(nn.Module):
             max_position_embeddings=self.max_position_embeddings,
             base=self.rope_theta,
         )
-        self.kv_cluster = KVCluster(window_size = 100, max_capacity_prompt = 500) # add kv_cluster
+        self.kv_cluster = KVCluster(window_size = 100, max_capacity_prompt = 500) # [SnapKV] add kv_cluster
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
@@ -314,7 +314,7 @@ class MixtralAttention(nn.Module):
                     "with a layer index."
                 )
             # kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-            if hasattr(self, "kv_seq_len"): # add kv_seq_len
+            if hasattr(self, "kv_seq_len"): # [SnapKV] add kv_seq_len
                 # print('self.kv_seq_len', self.kv_seq_len)
                 if self.kv_seq_len != 0:
                     kv_seq_len += self.kv_seq_len
@@ -326,12 +326,13 @@ class MixtralAttention(nn.Module):
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
         
+        # [SnapKV] move to ahead
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-            if key_states.shape[-2] == kv_seq_len: # add kv_cluster
+            if key_states.shape[-2] == kv_seq_len: # [SnapKV] add kv_cluster
                 self.kv_seq_len = kv_seq_len
                 key_states_compress, value_states_compress = self.kv_cluster.update_kv(key_states, query_states, value_states, attention_mask, self.num_key_value_groups)
                 past_key_value.update(key_states_compress, value_states_compress, self.layer_idx, cache_kwargs)
@@ -343,7 +344,7 @@ class MixtralAttention(nn.Module):
         # key_states = repeat_kv(key_states, self.num_key_value_groups)
         # value_states = repeat_kv(value_states, self.num_key_value_groups)
         
-        kv_seq_len = key_states.shape[-2] # adjust kv_seq_len
+        kv_seq_len = key_states.shape[-2] # [SnapKV] adjust kv_seq_len
         
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
@@ -354,7 +355,7 @@ class MixtralAttention(nn.Module):
             )
 
         if attention_mask is not None:
-            attention_mask = attention_mask[...,-kv_seq_len:]
+            attention_mask = attention_mask[...,-kv_seq_len:] # [SnapKV]
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
@@ -437,7 +438,7 @@ class MixtralFlashAttention2(MixtralAttention):
                     "with a layer index."
                 )
             # kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-            if hasattr(self, "kv_seq_len"): # add kv_seq_len
+            if hasattr(self, "kv_seq_len"): #[SnapKV] add kv_seq_len
                 # print('self.kv_seq_len', self.kv_seq_len)
                 if self.kv_seq_len != 0:
                     kv_seq_len += self.kv_seq_len
@@ -465,6 +466,7 @@ class MixtralFlashAttention2(MixtralAttention):
                 " make sure to upgrade flash-attn library."
             )
 
+        # [SnapKV] move to ahead
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
@@ -497,7 +499,7 @@ class MixtralFlashAttention2(MixtralAttention):
 
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
             # key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
-            if key_states.shape[-2] == kv_seq_len: # add kv_cluster
+            if key_states.shape[-2] == kv_seq_len: # [SnapKV] add kv_cluster
                 self.kv_seq_len = kv_seq_len
                 key_states_compress, value_states_compress = self.kv_cluster.update_kv(key_states, query_states, value_states, attention_mask, self.num_key_value_groups)
                 past_key_value.update(key_states_compress, value_states_compress, self.layer_idx, cache_kwargs)
@@ -1413,7 +1415,7 @@ class MixtralForCausalLM(MixtralPreTrainedModel):
     def prepare_inputs_for_generation(
         self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
     ):
-        if past_key_values is None:
+        if past_key_values is None: # [SnapKV]
             for layer in self.model.layers:
                 layer.self_attn.kv_seq_len = 0
         # Omit tokens covered by past_key_values

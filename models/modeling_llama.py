@@ -318,7 +318,7 @@ class LlamaAttention(nn.Module):
         self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias)
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=config.attention_bias)
         self._init_rope()
-        self.kv_cluster = KVCluster(window_size = 100, max_capacity_prompt = 500) # [YL] add kv_cluster
+        self.kv_cluster = KVCluster(window_size = 100, max_capacity_prompt = 500) # [SnapKV] add kv_cluster
 
     def _init_rope(self):
         if self.config.rope_scaling is None:
@@ -402,7 +402,7 @@ class LlamaAttention(nn.Module):
                     "with a layer index."
                 )
             # kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-            if hasattr(self, "kv_seq_len"): #[YL] add kv_seq_len
+            if hasattr(self, "kv_seq_len"): #[SnapKV] add kv_seq_len
                 # print('self.kv_seq_len', self.kv_seq_len)
                 if self.kv_seq_len != 0:
                     kv_seq_len += self.kv_seq_len
@@ -414,7 +414,7 @@ class LlamaAttention(nn.Module):
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
-        # [YL] move to ahead
+        # [SnapKV] move to ahead
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
@@ -425,7 +425,7 @@ class LlamaAttention(nn.Module):
         # key_states = repeat_kv(key_states, self.num_key_value_groups)
         # value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        kv_seq_len = key_states.shape[-2] # [YL] adjust kv_seq_len
+        kv_seq_len = key_states.shape[-2] # [SnapKV] adjust kv_seq_len
 
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
@@ -436,7 +436,7 @@ class LlamaAttention(nn.Module):
             )
 
         if attention_mask is not None:
-            attention_mask = attention_mask[...,-kv_seq_len:] # [YL]
+            attention_mask = attention_mask[...,-kv_seq_len:] # [SnapKV]
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
@@ -530,7 +530,7 @@ class LlamaFlashAttention2(LlamaAttention):
                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                     "with a layer index."
                 )
-            if hasattr(self, "kv_seq_len"): #[YL] add kv_seq_len
+            if hasattr(self, "kv_seq_len"): #[SnapKV] add kv_seq_len
                 # print('self.kv_seq_len', self.kv_seq_len)
                 if self.kv_seq_len != 0:
                     kv_seq_len += self.kv_seq_len
@@ -541,14 +541,14 @@ class LlamaFlashAttention2(LlamaAttention):
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
-        # [YL] move to ahead
+        # [SnapKV] move to ahead
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
             # key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
-            if key_states.shape[-2] == kv_seq_len: # [YL] add kv_cluster
+            if key_states.shape[-2] == kv_seq_len: # [SnapKV] add kv_cluster
                 self.kv_seq_len = kv_seq_len
                 key_states_compress, value_states_compress = self.kv_cluster.update_kv(key_states, query_states, value_states, attention_mask, self.num_key_value_groups)
                 past_key_value.update(key_states_compress, value_states_compress, self.layer_idx, cache_kwargs)
@@ -1273,7 +1273,7 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
     def prepare_inputs_for_generation(
         self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
     ):
-        if past_key_values is None: # [YL]
+        if past_key_values is None: # [SnapKV]
             for layer in self.model.layers:
                 layer.self_attn.kv_seq_len = 0
         if past_key_values is not None:

@@ -22,6 +22,7 @@
 PyTorch Mistral baseline model.
 https://github.com/huggingface/transformers/blob/v4.36-release/src/transformers/models/mistral/modeling_mistral.py
 Please write change log here:
+[SnapKV] save attention weights
 """
 
 import inspect
@@ -49,7 +50,7 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 from transformers.models.mistral.configuration_mistral import MistralConfig
-from snapkv_utils import KVCluster
+from utils_yl_ratio_avgpool_v2 import KVCluster # [SnapKV]
 
 
 if is_flash_attn_2_available():
@@ -239,7 +240,7 @@ class MistralAttention(nn.Module):
             max_position_embeddings=self.max_position_embeddings,
             base=self.rope_theta,
         )
-        self.kv_cluster = KVCluster(window_size = 100, max_capacity_prompt = 500) # add kv_cluster
+        self.kv_cluster = KVCluster(window_size = 100, max_capacity_prompt = 500) # [SnapKV] add kv_cluster
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
 
@@ -276,7 +277,7 @@ class MistralAttention(nn.Module):
                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                     "with a layer index."
                 )
-            if hasattr(self, "kv_seq_len"): # add kv_seq_len
+            if hasattr(self, "kv_seq_len"): #[SnapKV] add kv_seq_len
                 # print('self.kv_seq_len', self.kv_seq_len)
                 if self.kv_seq_len != 0:
                     kv_seq_len += self.kv_seq_len
@@ -289,13 +290,13 @@ class MistralAttention(nn.Module):
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         # repeat k/v heads if n_kv_heads < n_heads
-        # move to ahead
+        # [SnapKV] move to ahead
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-            if key_states.shape[-2] == kv_seq_len: # add kv_cluster
+            if key_states.shape[-2] == kv_seq_len: # [SnapKV] add kv_cluster
                 self.kv_seq_len = kv_seq_len
                 key_states_compress, value_states_compress = self.kv_cluster.update_kv(key_states, query_states, value_states, attention_mask, self.num_key_value_groups)
                 past_key_value.update(key_states_compress, value_states_compress, self.layer_idx, cache_kwargs)
@@ -303,7 +304,7 @@ class MistralAttention(nn.Module):
                 self.kv_seq_len += q_len
                 key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
-        kv_seq_len = key_states.shape[-2] # adjust kv_seq_len
+        kv_seq_len = key_states.shape[-2] # [SnapKV] adjust kv_seq_len
 
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
@@ -359,7 +360,7 @@ class MistralFlashAttention2(MistralAttention):
         # flash_attn<2.1 generates top-left aligned causal mask, while what is needed here is bottom-right alignement, that was made default for flash_attn>=2.1. This attribute is used to handle this difference. Reference: https://github.com/Dao-AILab/flash-attention/releases/tag/v2.1.0.
         # Beware that with flash_attn<2.1, using q_seqlen != k_seqlen (except for the case q_seqlen == 1) produces a wrong mask (top-left).
         self._flash_attn_uses_top_left_mask = not is_flash_attn_greater_or_equal_2_10()
-        # self.kv_cluster = KVCluster(window_size = 100, max_capacity_prompt = 500) # add kv_cluster
+        # self.kv_cluster = KVCluster(window_size = 100, max_capacity_prompt = 500) # [SnapKV] add kv_cluster
 
 
     def forward(
@@ -405,7 +406,7 @@ class MistralFlashAttention2(MistralAttention):
                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                     "with a layer index."
                 )
-            if hasattr(self, "kv_seq_len"): # add kv_seq_len
+            if hasattr(self, "kv_seq_len"): #[SnapKV] add kv_seq_len
                 # print('self.kv_seq_len', self.kv_seq_len)
                 if self.kv_seq_len != 0:
                     kv_seq_len += self.kv_seq_len
@@ -432,7 +433,7 @@ class MistralFlashAttention2(MistralAttention):
                 " make sure to upgrade flash-attn library."
             )
         # repeat k/v heads if n_kv_heads < n_heads
-        # move to ahead
+        # [SnapKV] move to ahead
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
@@ -463,7 +464,7 @@ class MistralFlashAttention2(MistralAttention):
                     attention_mask = torch.cat([attention_mask, torch.ones_like(attention_mask[:, -1:])], dim=-1)
 
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-            if key_states.shape[-2] == kv_seq_len: # add kv_cluster
+            if key_states.shape[-2] == kv_seq_len: # [SnapKV] add kv_cluster
                 self.kv_seq_len = kv_seq_len
                 key_states_compress, value_states_compress = self.kv_cluster.update_kv(key_states, query_states, value_states, attention_mask, self.num_key_value_groups)
                 past_key_value.update(key_states_compress, value_states_compress, self.layer_idx, cache_kwargs)
@@ -502,7 +503,7 @@ class MistralFlashAttention2(MistralAttention):
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
         # print('layer id', self.layer_idx, 'query_states', query_states.shape, 'key_states', key_states.shape, 'value_states', value_states.shape, 'kv_seq_len', kv_seq_len, 'dropout_rate', dropout_rate, 'use_sliding_windows', use_sliding_windows)
-        # change attention_mask to None
+        # [SnapKV] change attention_mask to None
         # print('layer id', self.layer_idx, 'query_states', query_states.shape, 'key_states', key_states.shape, 'value_states', value_states.shape, 'attention_mask', attention_mask.shape, 'kv_seq_len', kv_seq_len, 'dropout_rate', dropout_rate, 'use_sliding_windows', use_sliding_windows)
         attn_output = self._flash_attention_forward(
             query_states,
@@ -956,7 +957,7 @@ class MistralModel(MistralPreTrainedModel):
                 )
 
         if self._use_flash_attention_2:
-        # if False: # attention_mask is used for compression
+        # if False: # [SnapKV] attention_mask is used for compression
             # 2d mask is passed through the layers
             attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
         else:
@@ -1161,7 +1162,7 @@ class MistralForCausalLM(MistralPreTrainedModel):
                 max_cache_length = past_key_values.get_max_length()
             else:
                 # # cache_length = past_length = past_key_values[0][0].shape[2]
-                # if len(past_key_values) == 0: # for the first time, past_key_values is empty
+                # if len(past_key_values) == 0: # [SnapKV] for the first time, past_key_values is empty
                 #     print('fuck')
                 #     for layer in self.model.layers:
                 #         if hasattr(layer, "self_attn"):

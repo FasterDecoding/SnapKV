@@ -44,7 +44,7 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
-from snapkv_utils import KVCluster
+from utils_yl_ratio_avgpool_v2 import KVCluster # [SnapKV]
 
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func
@@ -241,7 +241,7 @@ class Qwen2Attention(nn.Module):
             max_position_embeddings=self.max_position_embeddings,
             base=self.rope_theta,
         )
-        self.kv_cluster = KVCluster(window_size = 100, max_capacity_prompt = 500) # add kv_cluster
+        self.kv_cluster = KVCluster(window_size = 100, max_capacity_prompt = 500) # [SnapKV] add kv_cluster
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -274,7 +274,7 @@ class Qwen2Attention(nn.Module):
                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                     "with a layer index."
                 )
-            if hasattr(self, "kv_seq_len"): # add kv_seq_len
+            if hasattr(self, "kv_seq_len"): #[SnapKV] add kv_seq_len
                 # print('self.kv_seq_len', self.kv_seq_len)
                 if self.kv_seq_len != 0:
                     kv_seq_len += self.kv_seq_len
@@ -287,14 +287,14 @@ class Qwen2Attention(nn.Module):
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         # repeat k/v heads if n_kv_heads < n_heads
-        # move to ahead
+        # [SnapKV] move to ahead
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
             # key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
-            if key_states.shape[-2] == kv_seq_len: # add kv_cluster
+            if key_states.shape[-2] == kv_seq_len: # [SnapKV] add kv_cluster
                 self.kv_seq_len = kv_seq_len
                 key_states_compress, value_states_compress = self.kv_cluster.update_kv(key_states, query_states, value_states, attention_mask, self.num_key_value_groups)
                 past_key_value.update(key_states_compress, value_states_compress, self.layer_idx, cache_kwargs)
@@ -306,7 +306,7 @@ class Qwen2Attention(nn.Module):
         # key_states = repeat_kv(key_states, self.num_key_value_groups)
         # value_states = repeat_kv(value_states, self.num_key_value_groups)
         
-        kv_seq_len = key_states.shape[-2] # adjust kv_seq_len
+        kv_seq_len = key_states.shape[-2] # [SnapKV] adjust kv_seq_len
 
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
@@ -317,7 +317,7 @@ class Qwen2Attention(nn.Module):
             )
 
         if attention_mask is not None:
-            attention_mask = attention_mask[...,-kv_seq_len:]
+            attention_mask = attention_mask[...,-kv_seq_len:] # [SnapKV]
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
@@ -409,7 +409,7 @@ class Qwen2FlashAttention2(Qwen2Attention):
                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                     "with a layer index."
                 )
-            if hasattr(self, "kv_seq_len"): # add kv_seq_len
+            if hasattr(self, "kv_seq_len"): #[SnapKV] add kv_seq_len
                 # print('self.kv_seq_len', self.kv_seq_len)
                 if self.kv_seq_len != 0:
                     kv_seq_len += self.kv_seq_len
@@ -439,6 +439,7 @@ class Qwen2FlashAttention2(Qwen2Attention):
             )
         
         # repeat k/v heads if n_kv_heads < n_heads
+        # [SnapKV] move to ahead
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
@@ -471,7 +472,7 @@ class Qwen2FlashAttention2(Qwen2Attention):
             # cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
             # key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-            if key_states.shape[-2] == kv_seq_len: # add kv_cluster
+            if key_states.shape[-2] == kv_seq_len: # [SnapKV] add kv_cluster
                 self.kv_seq_len = kv_seq_len
                 key_states_compress, value_states_compress = self.kv_cluster.update_kv(key_states, query_states, value_states, attention_mask, self.num_key_value_groups)
                 past_key_value.update(key_states_compress, value_states_compress, self.layer_idx, cache_kwargs)
@@ -1268,7 +1269,7 @@ class Qwen2ForCausalLM(Qwen2PreTrainedModel):
         self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
     ):
         # Omit tokens covered by past_key_values
-        if past_key_values is None:
+        if past_key_values is None: # [SnapKV]
             for layer in self.model.layers:
                 layer.self_attn.kv_seq_len = 0
         if past_key_values is not None:
@@ -1277,7 +1278,7 @@ class Qwen2ForCausalLM(Qwen2PreTrainedModel):
                 past_length = past_key_values.seen_tokens
                 max_cache_length = past_key_values.get_max_length()
             else:
-                cache_length = past_length = self.model.layers[0].self_attn.kv_seq_len
+                cache_length = past_length = self.model.layers[0].self_attn.kv_seq_len # [SnapKV]
                 # cache_length = past_length = past_key_values[0][0].shape[2]
                 max_cache_length = None
 
