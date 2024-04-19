@@ -2,7 +2,7 @@
 We introduce an innovative and out-of-box KV cache compression method, SnapKV.
 
 ![Comprehensive Experiment Results on LongBench](./figures/longbench.jpg)
-![Pressure Test Result on Needle-in-a-Haystack](./figures/LWM-Text-Chat-1M_SnapKV.pdf)
+![Pressure Test Result on Needle-in-a-Haystack](./figures/LWM-Text-Chat-1M_SnapKV.jpg)
 
 ## Quick Start
 ### Use SnapKV-optimized Models

@@ -22,8 +22,8 @@
 PyTorch Mistral baseline model.
 https://github.com/huggingface/transformers/blob/v4.36-release/src/transformers/models/mistral/modeling_mistral.py
 Please write change log here:
-[YL] save attention weights
-[YL] for benchmarking
+[SnapKV] save attention weights
+[SnapKV] for benchmarking
 """
 
 import inspect
@@ -307,7 +307,7 @@ class MistralAttention(nn.Module):
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         
-        # [YL] get stats=====================
+        # [SnapKV] get stats=====================
         self.features_per_data = []
         threshold = self.threshold
         prev_len = self.prev_len
@@ -319,23 +319,8 @@ class MistralAttention(nn.Module):
         prev_attn_typical = attn_weights[0, :, start:end, :start] > threshold
         prev_attn_typical = prev_attn_typical.sum(1) > 0
         self.prev_attn_typical = prev_attn_typical
-        
-        # for step in range(steps):
-        #     start = prev_len - window_size
-        #     end = prev_len
-        #     shift = window_size * step
-        #     prev_attn_sum = attn_weights[0, :, start:end, :start].sum(1)
-        #     cur_attn_sum = attn_weights[0, :, start + shift + window_size:end + shift + window_size, :start]
-        #     values, indices = torch.topk(prev_attn_sum, k=int(top_k * prev_len), dim=1)
-        #     mask = torch.zeros_like(prev_attn_sum, dtype=torch.bool, device=prev_attn_sum.device)
-        #     batch_indices = torch.arange(prev_attn_sum.size(0)).unsqueeze(1).expand_as(indices)
-        #     mask[batch_indices, indices] = 1
-        #     mask.unsqueeze_(1)
-        #     cur_attn_sum_threshold = cur_attn_sum > threshold
-        #     activation_overlap = cur_attn_sum_threshold & mask
-        #     hit_rate = activation_overlap.sum().float() / cur_attn_sum_threshold.sum().float()
-        #     self.features_per_data.append(hit_rate.item())
-        # [YL] end ==========================
+    
+        # [SnapKV] end ==========================
 
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
         attn_output = torch.matmul(attn_weights, value_states)
