@@ -1,4 +1,4 @@
-# SnapKV
+# SnapKV :camera_with_flash:
 We introduce an innovative and out-of-box KV cache compression method, SnapKV.
 ## Requirements
 `transformers>=4.36`
