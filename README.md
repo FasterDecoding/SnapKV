@@ -23,7 +23,7 @@ replace_mistral() # Use monkey patches enable SnapKV
 Check [the example notebook](./notebook/example.ipynb).
 
 ### Customize Your SnapKV-optimized Models
-SnapKV can be easily integrate with other models. 
+SnapKV can be easily integrated with other models. 
 
 You can follow the comment marked with `[SnapKV]` in [existing models](./snapkv/monkeypatch/monkeypatch.py) to construct your own models. (Currently we support [Llama family](./snapkv/monkeypatch/llama_hijack_4_37.py)/ [Mistral](./snapkv/monkeypatch//mistral_hijack_4_37.py)/ [Mixtral](./snapkv/monkeypatch//mixtral_hijack_4_37.py)) 
 
