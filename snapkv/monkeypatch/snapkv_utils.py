@@ -79,9 +79,9 @@ def init_snapkv(self):
             self.config.kernel_size = 5
         if not hasattr(self.config, 'pooling'):
             self.config.pooling = 'avgpool'
-        self.kv_cluster = SnapKVCluster( 
-            window_size = self.config.window_size, 
-            max_capacity_prompt = self.config.max_capacity_prompt, 
-            kernel_size = self.config.kernel_size,
-            pooling = self.config.pooling
-            )
+    self.kv_cluster = SnapKVCluster( 
+        window_size = self.config.window_size, 
+        max_capacity_prompt = self.config.max_capacity_prompt, 
+        kernel_size = self.config.kernel_size,
+        pooling = self.config.pooling
+        )
