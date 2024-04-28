@@ -20,7 +20,7 @@ from snapkv.monkeypatch.monkeypatch import replace_mistral
 replace_mistral() # Use monkey patches enable SnapKV
 ```
 
-Check [the example notebook](./notebook/example.ipynb).
+Check [the example notebook](./notebooks/example.ipynb).
 
 ### Customize Your SnapKV-optimized Models
 SnapKV can be easily integrated with other models. 
