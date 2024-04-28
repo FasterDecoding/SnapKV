@@ -20,7 +20,7 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
-class KVCluster():
+class SnapKVCluster():
     def __init__(self, window_size = 64, max_capacity_prompt = 256 + 64, kernel_size = 5, pooling = 'avgpool'):
         self.window_size = window_size
         self.max_capacity_prompt = max_capacity_prompt
@@ -68,3 +68,20 @@ class KVCluster():
             key_states = torch.cat([k_past_compress, k_cur], dim = 2)
             value_states = torch.cat([v_past_compress, v_cur], dim = 2)
             return key_states, value_states
+
+def init_snapkv(self):
+    if not hasattr(self, "kv_cluster"):
+        if not hasattr(self.config, 'window_size'):
+            self.config.window_size = 32
+        if not hasattr(self.config, 'max_capacity_prompt'):
+            self.config.max_capacity_prompt = 2048
+        if not hasattr(self.config, 'kernel_size'):
+            self.config.kernel_size = 5
+        if not hasattr(self.config, 'pooling'):
+            self.config.pooling = 'avgpool'
+        self.kv_cluster = SnapKVCluster( 
+            window_size = self.config.window_size, 
+            max_capacity_prompt = self.config.max_capacity_prompt, 
+            kernel_size = self.config.kernel_size,
+            pooling = self.config.pooling
+            )

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snapkv"
+version = "0.1"
+description = "SnapKV"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+]
+dependencies = [
+    "fschat", "torch", "transformers>=4.34", "accelerate", "sentencepiece", "protobuf"
+]
+
+[project.optional-dependencies]
+train = ["bitsandbytes", "wandb", "scipy"]
+
+[project.urls]
+"Homepage" = "https://github.com/FasterDecoding/SnapKV"
+
+[tool.setuptools.packages.find]
+exclude = ["assets*", "notebooks*", "scripts*", "observations"]
