@@ -1,9 +1,11 @@
 from importlib.metadata import version
+from transformers.utils import is_flash_attn_2_available
 import warnings
 import transformers
 from snapkv.monkeypatch.llama_hijack_4_37 import llama_flash_attn2_forward as llama_flash_attn2_forward_4_37, prepare_inputs_for_generation_llama as prepare_inputs_for_generation_llama_4_37
 from snapkv.monkeypatch.mistral_hijack_4_37 import mistral_flash_attn2_forward as mistral_flash_attn2_forward_4_37, prepare_inputs_for_generation_mistral as prepare_inputs_for_generation_mistral_4_37
 from snapkv.monkeypatch.mixtral_hijack_4_37 import mixtral_flash_attn2_forward as mixtral_flash_attn2_forward_4_37, prepare_inputs_for_generation_mixtral as prepare_inputs_for_generation_mixtral_4_37
+from snapkv.monkeypatch.llama_hijack_4_37 import llama_sdpa_attn_forward as llama_sdpa_attn_forward_4_37
 
 def check_version():
     try:
@@ -23,7 +25,11 @@ def replace_llama():
     if warning_flag:
         warnings.warn(f"Transformers version {transformers_version} might not be compatible with SnapKV. SnapKV is tested with Transformers version {version_list}.")
     transformers.models.llama.modeling_llama.LlamaForCausalLM.prepare_inputs_for_generation = prepare_inputs_for_generation_llama_4_37
-    transformers.models.llama.modeling_llama.LlamaFlashAttention2.forward = llama_flash_attn2_forward_4_37
+
+    if is_flash_attn_2_available():
+      transformers.models.llama.modeling_llama.LlamaFlashAttention2.forward = llama_flash_attn2_forward_4_37
+    else: # pytorch implementation
+      transformers.models.llama.modeling_llama.LlamaSdpaAttention.forward = llama_sdpa_attn_forward_4_37
 
 def replace_mistral():
     transformers_version = check_version()
